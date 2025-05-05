@@ -6,7 +6,7 @@ const db = require('./order');
 
 const token = process.env.BOT_TOKEN;
 const webAppUrl = process.env.WEB_APP_URL;
-const adminChatId = process.env.ADMIN_CHAT_ID; // У .env файл ОБОВ'ЯЗКОВО додай цей рядок: ADMIN_CHAT_ID=123456789
+const adminChatId = process.env.ADMIN_CHAT_ID; 
 
 const bot = new TelegramBot(token, { polling: true });
 
@@ -20,17 +20,9 @@ bot.on('message', async (msg) => {
   const text = msg.text;
 
   if (text === '/start') {
-    await bot.sendMessage(chatId, 'Нижче є кнопка для замовлення:', {
-      reply_markup: {
-        keyboard: [
-          [{ text: '🛍️ Зробити замовлення', web_app: { url: webAppUrl + 'form' } }]
-        ],
-        resize_keyboard: true, // Щоб кнопка була акуратна
-        one_time_keyboard: true // Приховається після натискання
-      }
-    });
 
-    await bot.sendMessage(chatId, 'Або натисніть кнопку нижче:', {
+
+    await bot.sendMessage(chatId, 'Кнопка', {
       reply_markup: {
         inline_keyboard: [
           [{ text: '🛒 Відкрити меню', web_app: { url: webAppUrl } }]
