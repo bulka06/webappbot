@@ -40,7 +40,7 @@ const pool = new Pool({
       city TEXT,
       street TEXT,
       email TEXT,
-      time TEXT,
+      delivery_time TEXT,
       payment_method TEXT,
       total NUMERIC,
       items JSONB,
@@ -59,7 +59,7 @@ const pool = new Pool({
 const insertOrder = async (orderData) => {
   const query = `
     INSERT INTO orders
-    (name, lastname, phone, city, street, email, time, payment_method, total, items)
+    (name, lastname, phone, city, street, email, delivery_time, payment_method, total, items)
     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
   `;
   const values = [
