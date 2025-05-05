@@ -6,19 +6,24 @@ const cors = require('cors');
 const token = process.env.BOT_TOKEN;
 const webAppUrl = process.env.WEB_APP_URL;
 
-const bot = new TelegramBot(token, { polling: true });
+const bot = new TelegramBot(token);
 const app = express();
 
 app.use(cors());
 app.use(express.json());
 
+// === Webhook обробка повідомлень ===
+app.post(`/bot${token}`, (req, res) => {
+  bot.processUpdate(req.body);
+  res.sendStatus(200);
+});
+
+// === Основна логіка бота ===
 bot.on('message', async (msg) => {
   const chatId = msg.chat.id;
   const text = msg.text;
 
   if (text === '/start') {
-   
-
     await bot.sendMessage(chatId, 'Або відкрий магазин прямо зараз:', {
       reply_markup: {
         inline_keyboard: [
@@ -52,7 +57,12 @@ bot.on('message', async (msg) => {
   }
 });
 
+// === Запуск сервера ===
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
   console.log(`🚀 Сервер працює на порту ${PORT}`);
+
+  // === Встановлюємо webhook ===
+  const url = process.env.RENDER_EXTERNAL_URL || `https://твій-домен.onrender.com`; // додай цю змінну в Render
+  await bot.setWebHook(`${url}/bot${token}`);
 });
