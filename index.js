@@ -6,7 +6,7 @@ const cors = require('cors');
 const token = process.env.BOT_TOKEN;
 const webAppUrl = process.env.WEB_APP_URL;
 
-const bot = new TelegramBot(token, { polling: true });
+const bot = new TelegramBot(token); // без polling
 const app = express();
 
 app.use(cors());
