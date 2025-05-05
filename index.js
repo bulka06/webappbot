@@ -19,7 +19,7 @@ app.use(cors());
 app.use(express.json());
 
 // ==== SSL сертифікат ====
-const sslCert = fs.readFileSync(path.resolve(__dirname, './certs/root.crt')).toString();
+
 
 // ==== Підключення до CockroachDB ====
 const pool = new Pool({
