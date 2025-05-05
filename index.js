@@ -119,32 +119,49 @@ bot.on('message', async (msg) => {
   }
 });
 
+const db = require('./db');
 // ==== Обробник POST-запиту з WebApp форми ====
 app.post('/order', async (req, res) => {
   try {
     const data = req.body;
     console.log('📦 Отримано замовлення з форми:', data);
 
-    await insertOrder(data);
+    const {
+      name, lastname, phone, city, street,
+      email, time, paymentMethod, total, baskItems
+    } = data;
 
+    // Зберігаємо замовлення в базу
+    await db.query(`
+      INSERT INTO orders (
+        name, lastname, phone, city, street,
+        email, delivery_time, payment_method, total, items
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+    `, [
+      name, lastname, phone, city, street,
+      email, time, paymentMethod, total,
+      JSON.stringify(baskItems)
+    ]);
+
+    // Надсилаємо адміну
     const message = `
 📥 НОВЕ ЗАМОВЛЕННЯ
-👤 Імʼя: ${data.name} ${data.lastname}
-📞 Телефон: ${data.phone}
-🏙️ Адреса: ${data.city}, ${data.street}
-📧 Email: ${data.email}
-🕒 Час доставки: ${data.time}
-💳 Оплата: ${data.paymentMethod}
-💰 Сума: ${data.total} грн
-🛒 Товари:
-${data.baskItems?.map(item => `• ${item.title} x${item.quantity}`).join('\n') || '—'}
+👤 ${name} ${lastname}
+📞 ${phone}
+🏙️ ${city}, ${street}
+📧 ${email}
+🕒 ${time}
+💳 ${paymentMethod}
+💰 ${total} грн
+🛒 ${baskItems?.map(item => `• ${item.title} x${item.quantity}`).join('\n') || '—'}
     `;
 
-    await bot.sendMessage(adminChatId, message);
+    await bot.sendMessage(process.env.ADMIN_CHAT_ID, message);
 
     res.status(200).send({ success: true });
+
   } catch (err) {
-    console.error('❌ Помилка при обробці замовлення:', err);
+    console.error('❌ Помилка при збереженні замовлення:', err);
     res.status(500).send({ error: 'Помилка сервера' });
   }
 });
