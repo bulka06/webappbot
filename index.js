@@ -6,19 +6,13 @@ const cors = require('cors');
 const token = process.env.BOT_TOKEN;
 const webAppUrl = process.env.WEB_APP_URL;
 
-const bot = new TelegramBot(token);
+const bot = new TelegramBot(token, { polling: true });
 const app = express();
 
 app.use(cors());
 app.use(express.json());
 
-// === Webhook обробка повідомлень ===
-app.post(`/bot${token}`, (req, res) => {
-  bot.processUpdate(req.body);
-  res.sendStatus(200);
-});
-
-// === Основна логіка бота ===
+// === Обробка повідомлень Telegram ===
 bot.on('message', async (msg) => {
   const chatId = msg.chat.id;
   const text = msg.text;
@@ -57,12 +51,43 @@ bot.on('message', async (msg) => {
   }
 });
 
+// === Новий обробник POST /order ===
+app.post('/order', async (req, res) => {
+  try {
+    const data = req.body;
+    console.log('📦 Отримано замовлення з форми:', data);
+
+    // (необовʼязково) Надсилаємо адміну в Telegram
+    const message = `
+📥 НОВЕ ЗАМОВЛЕННЯ
+👤 Імʼя: ${data.name} ${data.lastname}
+📞 Телефон: ${data.phone}
+🏙️ Адреса: ${data.city}, ${data.street}
+📧 Email: ${data.email}
+🕒 Час доставки: ${data.time}
+💳 Оплата: ${data.paymentMethod}
+💰 Сума: ${data.total} грн
+🛒 Товари:
+${data.baskItems?.map(item => `• ${item.title} x${item.quantity}`).join('\n') || '—'}
+    `;
+
+    await bot.sendMessage(process.env.ADMIN_CHAT_ID, message);
+
+    res.status(200).send({ success: true });
+  } catch (err) {
+    console.error('❌ Помилка при обробці замовлення:', err);
+    res.status(500).send({ error: 'Помилка сервера' });
+  }
+});
+
 // === Запуск сервера ===
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, async () => {
   console.log(`🚀 Сервер працює на порту ${PORT}`);
 
-  // === Встановлюємо webhook ===
-  const url = process.env.RENDER_EXTERNAL_URL || `https://webappbot.onrender.com`; // додай цю змінну в Render
-  await bot.setWebHook(`${url}/bot${token}`);
+  // === Webhook (для продакшну з Render) ===
+  const url = process.env.RENDER_EXTERNAL_URL;
+  if (url) {
+    await bot.setWebHook(`${url}/bot${token}`);
+  }
 });
