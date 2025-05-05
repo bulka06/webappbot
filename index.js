@@ -2,17 +2,83 @@ require('dotenv').config();
 const TelegramBot = require('node-telegram-bot-api');
 const express = require('express');
 const cors = require('cors');
+const { Pool } = require('pg');
+const fs = require('fs');
+const path = require('path');
 
+// ==== Telegram Bot ====
 const token = process.env.BOT_TOKEN;
 const webAppUrl = process.env.WEB_APP_URL;
+const adminChatId = process.env.ADMIN_CHAT_ID;
 
-const bot = new TelegramBot(token); // без polling
+const bot = new TelegramBot(token);
 const app = express();
 
+// ==== Middleware ====
 app.use(cors());
 app.use(express.json());
 
-// === Обробка повідомлень Telegram ===
+// ==== SSL сертифікат ====
+const sslCert = fs.readFileSync(path.resolve(__dirname, './certs/root.crt')).toString();
+
+// ==== Підключення до CockroachDB ====
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: {
+    rejectUnauthorized: true,
+    ca: sslCert
+  }
+});
+
+// ==== Створення таблиці, якщо ще не існує ====
+(async () => {
+  const createTableQuery = `
+    CREATE TABLE IF NOT EXISTS orders (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      name TEXT,
+      lastname TEXT,
+      phone TEXT,
+      city TEXT,
+      street TEXT,
+      email TEXT,
+      time TEXT,
+      payment_method TEXT,
+      total NUMERIC,
+      items JSONB,
+      created_at TIMESTAMP DEFAULT now()
+    );
+  `;
+  try {
+    await pool.query(createTableQuery);
+    console.log('✅ Таблиця orders готова');
+  } catch (err) {
+    console.error('❌ Помилка при створенні таблиці:', err);
+  }
+})();
+
+// ==== Функція збереження замовлення ====
+const insertOrder = async (orderData) => {
+  const query = `
+    INSERT INTO orders
+    (name, lastname, phone, city, street, email, time, payment_method, total, items)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+  `;
+  const values = [
+    orderData.name,
+    orderData.lastname,
+    orderData.phone,
+    orderData.city,
+    orderData.street,
+    orderData.email,
+    orderData.time,
+    orderData.paymentMethod,
+    orderData.total,
+    JSON.stringify(orderData.baskItems)
+  ];
+  await pool.query(query, values);
+};
+
+// ==== Telegram WebApp: Отримання замовлення ====
 bot.on('message', async (msg) => {
   const chatId = msg.chat.id;
   const text = msg.text;
@@ -32,6 +98,8 @@ bot.on('message', async (msg) => {
       const data = JSON.parse(msg.web_app_data.data);
       console.log('✅ Отримано з WebApp:', data);
 
+      await insertOrder(data);
+
       await bot.sendMessage(chatId, '✅ Дані отримано!');
       await bot.sendMessage(chatId, `Імʼя: ${data.name}`);
       await bot.sendMessage(chatId, `Прізвище: ${data.lastname}`);
@@ -42,7 +110,7 @@ bot.on('message', async (msg) => {
       await bot.sendMessage(chatId, `Оплата: ${data.paymentMethod}`);
       await bot.sendMessage(chatId, `Сума: ${data.total} грн`);
 
-      const items = data.baskItems?.map(item => `🍔 ${item.title} x${item.count}`).join('\n') || 'Без товарів';
+      const items = data.baskItems?.map(item => `🍔 ${item.title} x${item.quantity}`).join('\n') || 'Без товарів';
       await bot.sendMessage(chatId, `Товари:\n${items}`);
     } catch (err) {
       console.error('❌ Помилка при обробці WebApp даних:', err);
@@ -51,13 +119,14 @@ bot.on('message', async (msg) => {
   }
 });
 
-// === Новий обробник POST /order ===
+// ==== Обробник POST-запиту з WebApp форми ====
 app.post('/order', async (req, res) => {
   try {
     const data = req.body;
     console.log('📦 Отримано замовлення з форми:', data);
 
-    // (необовʼязково) Надсилаємо адміну в Telegram
+    await insertOrder(data);
+
     const message = `
 📥 НОВЕ ЗАМОВЛЕННЯ
 👤 Імʼя: ${data.name} ${data.lastname}
@@ -71,7 +140,7 @@ app.post('/order', async (req, res) => {
 ${data.baskItems?.map(item => `• ${item.title} x${item.quantity}`).join('\n') || '—'}
     `;
 
-    await bot.sendMessage(process.env.ADMIN_CHAT_ID, message);
+    await bot.sendMessage(adminChatId, message);
 
     res.status(200).send({ success: true });
   } catch (err) {
@@ -80,12 +149,11 @@ ${data.baskItems?.map(item => `• ${item.title} x${item.quantity}`).join('\n') 
   }
 });
 
-// === Запуск сервера ===
+// ==== Запуск сервера ====
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, async () => {
   console.log(`🚀 Сервер працює на порту ${PORT}`);
 
-  // === Webhook (для продакшну з Render) ===
   const url = process.env.RENDER_EXTERNAL_URL;
   if (url) {
     await bot.setWebHook(`${url}/bot${token}`);
