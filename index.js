@@ -63,6 +63,6 @@ app.listen(PORT, async () => {
   console.log(`🚀 Сервер працює на порту ${PORT}`);
 
   // === Встановлюємо webhook ===
-  const url = process.env.RENDER_EXTERNAL_URL || `https://твій-домен.onrender.com`; // додай цю змінну в Render
+  const url = process.env.RENDER_EXTERNAL_URL || `https://webappbot.onrender.com`; // додай цю змінну в Render
   await bot.setWebHook(`${url}/bot${token}`);
 });
