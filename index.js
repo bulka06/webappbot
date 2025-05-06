@@ -11,7 +11,8 @@ const token = process.env.BOT_TOKEN;
 const webAppUrl = process.env.WEB_APP_URL;
 const adminChatId = process.env.ADMIN_CHAT_ID;
 
-const bot = new TelegramBot(token, { polling: true });
+const bot = new TelegramBot(token, { webHook: true });
+
 const app = express();
 
 // ==== Middleware ====
