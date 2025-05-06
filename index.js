@@ -84,8 +84,8 @@ bot.onText(/\/start/, async (msg) => {
   console.log(`✅ Отримано команду /start від користувача ${chatId}`);
   
   try {
-    await bot.sendMessage(chatId, 'Вітаємо у нашому магазині! 🛍️');
-    await bot.sendMessage(chatId, 'Відкрий магазин прямо зараз:', {
+    await bot.sendMessage(chatId, 'Вітаємо ! 🛍️');
+    await bot.sendMessage(chatId, 'Зробити замовлення їжі:', {
       reply_markup: {
         inline_keyboard: [
           [{ text: '🛒 Відкрити меню', web_app: { url: webAppUrl } }]
