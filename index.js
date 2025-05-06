@@ -209,6 +209,6 @@ app.listen(PORT, () => {
   bot.getMe().then(botInfo => {
     console.log(`✅ Бот @${botInfo.username} успішно запущено`);
   }).catch(error => {
-    console.error('❌ Помилка зєднання з Telegram API:', error);
+    console.error('❌ Помилка  з Telegram API:', error);
   });
 });
