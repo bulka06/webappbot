@@ -11,16 +11,14 @@ const token = process.env.BOT_TOKEN;
 const webAppUrl = process.env.WEB_APP_URL;
 const adminChatId = process.env.ADMIN_CHAT_ID;
 
-const bot = new TelegramBot(token, { webHook: true });
+// Використовуємо polling замість webhook для надійнішої роботи
+const bot = new TelegramBot(token, { polling: true });
 
 const app = express();
 
 // ==== Middleware ====
 app.use(cors());
 app.use(express.json());
-
-// ==== SSL сертифікат ====
-
 
 // ==== Підключення до CockroachDB ====
 const pool = new Pool({
@@ -62,6 +60,7 @@ const insertOrder = async (orderData) => {
     INSERT INTO orders
     (name, lastname, phone, city, street, email, delivery_time, payment_method, total, items)
     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+    RETURNING id
   `;
   const values = [
     orderData.name,
@@ -75,43 +74,70 @@ const insertOrder = async (orderData) => {
     orderData.total,
     JSON.stringify(orderData.baskItems)
   ];
-  await pool.query(query, values);
+  const result = await pool.query(query, values);
+  return result.rows[0].id;
 };
 
-// ==== Telegram WebApp: Отримання замовлення ====
-bot.on('message', async (msg) => {
+// ==== Telegram WebApp: Обробка команд ====
+bot.onText(/\/start/, async (msg) => {
   const chatId = msg.chat.id;
-  const text = msg.text;
-
-  if (text === '/start') {
-    await bot.sendMessage(chatId, 'Або відкрий магазин прямо зараз:', {
+  console.log(`✅ Отримано команду /start від користувача ${chatId}`);
+  
+  try {
+    await bot.sendMessage(chatId, 'Вітаємо у нашому магазині! 🛍️');
+    await bot.sendMessage(chatId, 'Відкрий магазин прямо зараз:', {
       reply_markup: {
         inline_keyboard: [
           [{ text: '🛒 Відкрити меню', web_app: { url: webAppUrl } }]
         ]
       }
     });
+    console.log(`✅ Відправлено повідомлення з кнопкою користувачу ${chatId}`);
+  } catch (error) {
+    console.error('❌ Помилка при відправці повідомлення з кнопкою:', error);
   }
+});
 
+// ==== Обробка даних з веб-додатку ====
+bot.on('message', async (msg) => {
+  const chatId = msg.chat.id;
+  
   if (msg?.web_app_data?.data) {
     try {
       const data = JSON.parse(msg.web_app_data.data);
       console.log('✅ Отримано з WebApp:', data);
 
-      await insertOrder(data);
+      const orderId = await insertOrder(data);
 
-      await bot.sendMessage(chatId, '✅ Дані отримано!');
-      await bot.sendMessage(chatId, `Імʼя: ${data.name}`);
-      await bot.sendMessage(chatId, `Прізвище: ${data.lastname}`);
-      await bot.sendMessage(chatId, `Телефон: ${data.phone}`);
-      await bot.sendMessage(chatId, `Адреса: ${data.city}, ${data.street}`);
-      await bot.sendMessage(chatId, `Email: ${data.email}`);
-      await bot.sendMessage(chatId, `Час: ${data.time}`);
-      await bot.sendMessage(chatId, `Оплата: ${data.paymentMethod}`);
-      await bot.sendMessage(chatId, `Сума: ${data.total} грн`);
+      await bot.sendMessage(chatId, '✅ Дякуємо за замовлення!');
+      await bot.sendMessage(chatId, `🆔 Номер замовлення: ${orderId}`);
+      await bot.sendMessage(chatId, `👤 ${data.name} ${data.lastname}`);
+      await bot.sendMessage(chatId, `📞 Телефон: ${data.phone}`);
+      await bot.sendMessage(chatId, `🏙️ Адреса: ${data.city}, ${data.street}`);
+      await bot.sendMessage(chatId, `📧 Email: ${data.email}`);
+      await bot.sendMessage(chatId, `🕒 Час доставки: ${data.time}`);
+      await bot.sendMessage(chatId, `💳 Оплата: ${data.paymentMethod}`);
+      await bot.sendMessage(chatId, `💰 Сума: ${data.total} грн`);
 
       const items = data.baskItems?.map(item => `🍔 ${item.title} x${item.quantity}`).join('\n') || 'Без товарів';
-      await bot.sendMessage(chatId, `Товари:\n${items}`);
+      await bot.sendMessage(chatId, `🛒 Товари:\n${items}`);
+      
+      // Відправка повідомлення адміністратору
+      if (adminChatId) {
+        const adminMessage = `
+📥 НОВЕ ЗАМОВЛЕННЯ
+🆔 ${orderId}
+👤 ${data.name} ${data.lastname}
+📞 ${data.phone}
+🏙️ ${data.city}, ${data.street}
+📧 ${data.email}
+🕒 ${data.time}
+💳 ${data.paymentMethod}
+💰 ${data.total} грн
+🛒 ${data.baskItems?.map(item => `• ${item.title} x${item.quantity}`).join('\n') || '—'}
+        `;
+        await bot.sendMessage(adminChatId, adminMessage);
+      }
     } catch (err) {
       console.error('❌ Помилка при обробці WebApp даних:', err);
       await bot.sendMessage(chatId, '⚠️ Сталася помилка при обробці даних.');
@@ -119,7 +145,6 @@ bot.on('message', async (msg) => {
   }
 });
 
-const db = require('./db');
 // ==== Обробник POST-запиту з WebApp форми ====
 app.post('/order', async (req, res) => {
   try {
@@ -132,20 +157,28 @@ app.post('/order', async (req, res) => {
     } = data;
 
     // Зберігаємо замовлення в базу
-    await db.query(`
+    const query = `
       INSERT INTO orders (
         name, lastname, phone, city, street,
         email, delivery_time, payment_method, total, items
       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
-    `, [
+      RETURNING id
+    `;
+    
+    const values = [
       name, lastname, phone, city, street,
       email, time, paymentMethod, total,
       JSON.stringify(baskItems)
-    ]);
+    ];
+    
+    const result = await pool.query(query, values);
+    const orderId = result.rows[0].id;
 
-    // Надсилаємо адміну
-    const message = `
+    // Надсилаємо повідомлення адміну
+    if (adminChatId) {
+      const message = `
 📥 НОВЕ ЗАМОВЛЕННЯ
+🆔 ${orderId}
 👤 ${name} ${lastname}
 📞 ${phone}
 🏙️ ${city}, ${street}
@@ -154,11 +187,12 @@ app.post('/order', async (req, res) => {
 💳 ${paymentMethod}
 💰 ${total} грн
 🛒 ${baskItems?.map(item => `• ${item.title} x${item.quantity}`).join('\n') || '—'}
-    `;
+      `;
 
-    await bot.sendMessage(process.env.ADMIN_CHAT_ID, message);
+      await bot.sendMessage(adminChatId, message);
+    }
 
-    res.status(200).send({ success: true });
+    res.status(200).send({ success: true, orderId });
 
   } catch (err) {
     console.error('❌ Помилка при збереженні замовлення:', err);
@@ -168,11 +202,13 @@ app.post('/order', async (req, res) => {
 
 // ==== Запуск сервера ====
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, async () => {
+app.listen(PORT, () => {
   console.log(`🚀 Сервер працює на порту ${PORT}`);
-
-  const url = process.env.RENDER_EXTERNAL_URL;
-  if (url) {
-    await bot.setWebHook(`${url}/bot${token}`);
-  }
+  
+  // Перевіряємо статус з'єднання бота
+  bot.getMe().then(botInfo => {
+    console.log(`✅ Бот @${botInfo.username} успішно запущено`);
+  }).catch(error => {
+    console.error('❌ Помилка зєднання з Telegram API:', error);
+  });
 });
