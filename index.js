@@ -50,7 +50,7 @@ const pool = new Pool({
     await pool.query(createTableQuery);
     console.log('✅ Таблиця orders готова');
   } catch (err) {
-    console.error('❌ Помилка при створенні таблиці:', err);
+    console.error('❌ Помилка при створенні таблицi:', err);
   }
 })();
 
@@ -140,7 +140,7 @@ bot.on('message', async (msg) => {
       }
     } catch (err) {
       console.error('❌ Помилка при обробці WebApp даних:', err);
-      await bot.sendMessage(chatId, '⚠️ Сталася помилка при обробці даних.');
+      await bot.sendMessage(chatId, '⚠️ Сталася помилка при обробці даних');
     }
   }
 });
